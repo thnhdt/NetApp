@@ -13,7 +13,7 @@ class Torrent ():
     def __init__(self):
         self.total_length: int = 0
         self.piece_length: int = 0
-        self.pieces = []
+        self.piece_hashes = [] # TEMP because it only handles single-file torrent
         self.info_hash: str = ''
         self.peer_id: str = ''
         self.announce = ''
@@ -41,41 +41,44 @@ class Torrent ():
             self.piece_length = info.get(b'piece length', 0)
            
             pieces_byte = info.get(b'pieces')
-            self.pieces = [pieces_byte[i:i + 20] for i in range(0, len(pieces_byte), 20)]  # Split pieces into chunks of 20 bytes
+            self.piece_hashes = [pieces_byte[i:i + 20] for i in range(0, len(pieces_byte), 20)]  # Split pieces into chunks of 20 bytes
             self.name = info.get(b'name', '')
 
             # For multi-file torrents
-            self.files = info.get(b'files', [])
+            self.files = info.get(b'files', []) 
             self.total_length = sum(file[b'length'] for file in info.get(b'files', []))
 
-            self.number_of_pieces = len(self.pieces)
+            self.number_of_pieces = len(self.piece_hashes)
             # Calculate the info hash
             self.info_hash = getInfoHash(info)
             # Logging result
-            print("announce", self.announce)
-            print("piece_length", self.piece_length)
-            print("pieces", self.pieces)
-            print("info_hash", self.info_hash)
-            print("no_of_pieces", self.number_of_pieces)
-            print("files", self.files)
-            print("name", self.name)
-            print("total_length", self.total_length)
+            # print("announce", self.announce)
+            # print("piece_length", self.piece_length)
+            # print("piece_hashes", self.piece_hashes)
+            # print("info_hash", self.info_hash)
+            # print("no_of_pieces", self.number_of_pieces)
+            # print("files", self.files)
+            # print("name", self.name)
+            # print("total_length", self.total_length)
             return torrent_data
     
         except FileNotFoundError:
             print(f"Error: The file '{path}' was not found.")
         except Exception as e:
             print(f"An error occurred while loading the torrent file: {e}")
+
+    def get_piece_hashes (self):
+        return self.piece_hashes
         
-    def create_multi_file_torrent(self, directory_path, tracker_url, output_torrent, piece_length=262144):
-        for root, _, filenames in os.walk(directory_path):
+    def create_multi_file_torrent(self, shared_file_path, torrent_file_path, tracker_url, output_torrent, piece_length=262144):
+        for root, _, filenames in os.walk(shared_file_path):
             for filename in filenames:
                 file_path = os.path.join(root, filename)
                 file_size = os.path.getsize(file_path)
                 self.total_length += file_size
 
                 # Calculate the relative file path (relative to the directory being shared)
-                relative_path = os.path.relpath(file_path, directory_path).split(os.sep)
+                relative_path = os.path.relpath(file_path, shared_file_path).split(os.sep)
 
                 # Add the file's information to the "files" list
                 self.files.append({
@@ -90,11 +93,11 @@ class Torrent ():
                         if not chunk:
                             break
                         # Create a SHA-1 hash for each piece
-                        self.pieces.append(hashlib.sha1(chunk).digest())
+                        self.piece_hashes.append(hashlib.sha1(chunk).digest())
         info = {
-            'name': os.path.basename(directory_path),  # The root directory name
+            'name': os.path.basename(shared_file_path),  # The root directory name
             'piece length': piece_length,               # The length of each piece
-            'pieces': b''.join(self.pieces),                 # Concatenate all the SHA-1 hashes
+            'pieces': b''.join(self.piece_hashes),                 # Concatenate all the SHA-1 hashes
             'files': self.files                              # List of all files and their paths
         }
         
@@ -109,7 +112,8 @@ class Torrent ():
 
         # Encode the data in bencode format and write it to the output file
         encoded_data = bencodepy.encode(torrent_data)
-        with open(output_torrent, 'wb') as torrent_file:
+        with open(
+        torrent_file_path + output_torrent, 'wb') as torrent_file:
             torrent_file.write(encoded_data)
 
         print(f'Torrent file created: {output_torrent}')
@@ -117,11 +121,13 @@ class Torrent ():
 
 if __name__ == '__main__':
     # Input parameters
-    file_path = 'S:/Computer Network/BTL'  # Replace with the path to your file
+    shared_file_path = 'S:/Programming/Network/MyBitTorrent/shared_file'  # Replace with the path to your file
+    torren_file_path = 'S:/Programming/Network/MyBitTorrent/torrent/'
     tracker_url = '192.168.0.2:22236'  # Replace with the tracker URL
     output_torrent = 'test.torrent'  # Output .torrent file path
-    torrent = Torrent();
-    torrent.create_multi_file_torrent(directory_path=file_path,
-                                      tracker_url=tracker_url, output_torrent=output_torrent)
+    # torrent = Torrent();
+    # torrent.create_multi_file_torrent(shared_file_path=shared_file_path,
+    #                                   torrent_file_path = torren_file_path,
+    #                                   tracker_url=tracker_url, output_torrent=output_torrent)
     existedTorrent = Torrent();
-    existedTorrent.load_file_from_path("test.torrent")
+    existedTorrent.load_file_from_path("S:/Programming/Network/MyBitTorrent/torrent/test.torrent")

@@ -5,7 +5,7 @@ import socket
 from threading import Thread
 import bencodepy
 import json
-
+import time
 peer_dict = {}
 
 def new_connection(conn, addr):
@@ -14,8 +14,11 @@ def new_connection(conn, addr):
 
     while True:
         data = conn.recv(1024).decode('utf-8');
+        if not data:
+            time.sleep(1)  # Wait for 100ms before the next iteration
+            continue
         message = json.loads(data)
-        if(message['action'] == 'announce'):
+        if(message['action'] == 'download' or message['action'] == 'upload'): # register to tracker
             info_hash = message['info_hash']
             peer_id = message['peer_id']
             peer_ip = message['ip']
@@ -34,11 +37,26 @@ def new_connection(conn, addr):
                 }
 
             print("peer dict", peer_dict)
-            response = input("Enter response to send to client: ")
-            conn.send(json.dumps(response).encode('utf-8'))
+            if info_hash in peer_dict:
+                peers = peer_dict[info_hash]
+                response = peers
+            else:
+                response = {'peers': {}}
+            conn.send(json.dumps(response).encode()) # sends peer list
+        elif (message['action'] == 'get_peers'): 
+                # Example: get_peers <info_hash>
+                # info_hash = parts[1]
+                if info_hash in peer_dict:
+                    peers = peer_dict[info_hash]
+                    response = peers
+                else:
+                    response = {'peers': {}}
+                conn.send(json.dumps(response).encode())
         else:
             response = "What do you say?"
             conn.send(json.dumps(response).encode('utf-8'))
+
+    
 
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP connection
