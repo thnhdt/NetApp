@@ -5,7 +5,7 @@ import json
 import hashlib
 
 class incompleteFile():
-    piece_size = 262144 # 256 KB a piece
+    piece_size = 1 # 256 KB a piece
     piece_status: str # array of 0 1 indicates the status of the file, load from json file 
     piece_hashes = []
     files = [] # {length: x, path: []}
@@ -25,8 +25,9 @@ class incompleteFile():
             piece_no = ceil(file['length'] / self.piece_size)
             self.pieceBoundaries.append(self.pieceBoundaries[-1] + piece_no)
             self.filePaths.append(self.filePath + file['path'][-1].decode())
-            with open(self.filePaths[-1], 'w') as file:
-                pass  # Creates an empty file
+            if not os.path.exists(self.filePaths[-1]): # check if the file path exist or not
+                with open(self.filePaths[-1], 'w') as file:
+                    pass  # Creates an empty file
         self.pieceBoundaries.pop(0) # delete the first dummy 0
         self.n_pieces = ceil(self.size / self.piece_size)
         print("Size of the complete file ", self.size)
@@ -38,7 +39,7 @@ class incompleteFile():
     def get_piece_no(self, piece_no):
         if(self.piece_status[piece_no] == "1"):
             fileIdx = self._find_file_of_piece(piece_no)
-            with open(self.filePaths[fileIdx], "r") as file:
+            with open(self.filePaths[fileIdx], "rb") as file:
                 if(fileIdx > 0):
                     offset = self.piece_size*(piece_no-self.pieceBoundaries[fileIdx-1])
                 else:
@@ -67,21 +68,24 @@ class incompleteFile():
         # check buf with piece_hash
         # update status file
         if(self.check_piece_integrity(piece_no, buf)):
+            
 
             new_status = self.piece_status[:piece_no] + "1" + self.piece_status[piece_no+1:]
+            self.piece_status = new_status
             with open(self.statusFilePath, "w") as file:
                 data = {"status": new_status}
                 json.dump(data, file)
 
             fileIdx = self._find_file_of_piece(piece_no)
-            with open(self.filePaths[fileIdx], "w") as file:
+            with open(self.filePaths[fileIdx], "r+b") as file:
                 if(fileIdx > 0):
                     offset = self.piece_size*(piece_no-self.pieceBoundaries[fileIdx-1])
                 else:
                     offset = self.piece_size*(piece_no)
                 file.seek(offset)
                 file.write(buf)
-            print("Write price no {} into file {}".format(piece_no, fileIdx) )
+            print("buf", buf)
+            print("Write price no {} into file {} with offset {}".format(piece_no, fileIdx, offset) )
         else: 
             print("Write price no {} failed".format(piece_no))
 

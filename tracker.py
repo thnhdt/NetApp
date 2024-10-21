@@ -46,6 +46,7 @@ def new_connection(conn, addr):
         elif (message['action'] == 'get_peers'): 
                 # Example: get_peers <info_hash>
                 # info_hash = parts[1]
+                info_hash = message['info_hash']
                 if info_hash in peer_dict:
                     peers = peer_dict[info_hash]
                     response = peers

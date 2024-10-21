@@ -1,8 +1,7 @@
 import os
 import hashlib
 import bencodepy
-
-    
+PIECE_LENGTH = 1
 def getInfoHash (info):
     bencoded_info = bencodepy.encode(info)
     # Compute the SHA-1 hash of the bencoded info
@@ -70,7 +69,7 @@ class Torrent ():
     def get_piece_hashes (self):
         return self.piece_hashes
         
-    def create_multi_file_torrent(self, shared_file_path, torrent_file_path, tracker_url, output_torrent, piece_length=262144):
+    def create_multi_file_torrent(self, shared_file_path, torrent_file_path, tracker_url, output_torrent, piece_length=PIECE_LENGTH):
         for root, _, filenames in os.walk(shared_file_path):
             for filename in filenames:
                 file_path = os.path.join(root, filename)
@@ -125,9 +124,9 @@ if __name__ == '__main__':
     torren_file_path = 'S:/Programming/Network/MyBitTorrent/torrent/'
     tracker_url = '192.168.0.2:22236'  # Replace with the tracker URL
     output_torrent = 'test.torrent'  # Output .torrent file path
-    # torrent = Torrent();
-    # torrent.create_multi_file_torrent(shared_file_path=shared_file_path,
-    #                                   torrent_file_path = torren_file_path,
-    #                                   tracker_url=tracker_url, output_torrent=output_torrent)
+    torrent = Torrent();
+    torrent.create_multi_file_torrent(shared_file_path=shared_file_path,
+                                      torrent_file_path = torren_file_path,
+                                      tracker_url=tracker_url, output_torrent=output_torrent)
     existedTorrent = Torrent();
     existedTorrent.load_file_from_path("S:/Programming/Network/MyBitTorrent/torrent/test.torrent")

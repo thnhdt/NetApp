@@ -3,9 +3,11 @@ from threading import Thread
 import uuid
 import torrent
 import bencodepy
+import time
 import os
 import argparse
 import json
+import base64
 import complete_file
 import incomplete_file
 import logging
@@ -51,6 +53,7 @@ class Peer:
         self.downloadDir = PEERS_INCOMPLETE_DIR + name + "/"
         self.completeDir = PEERS_COMPLETE_DIR + name + "/"
         self.incomplete_files = {}
+        self.available_files = {}
 
         if not os.path.isdir(self.downloadDir):
             os.mkdir(self.downloadDir)
@@ -61,24 +64,19 @@ class Peer:
         if not os.path.isdir(self.completeDir):
             os.mkdir(self.completeDir)
 
-        self.available_files = {}
-        for f in os.listdir(self.completeDir):
-            print(f)
-            self.available_files[f] = complete_file.completeFile(f, "")
-
         
-        
-    def runServerThread (self):
-        self.serverSocket = socket.socket()
-        self.serverSocket.bind((self.ip, self.port))
-
     def runClientThread (self):
         while True: 
             print('''You can 
                 1. upload file
                 2. download file
                 ''')
-            request = input(">");
+            try:
+                request = input(">")
+            except EOFError as e:
+                print(e)
+                continue
+
             # Parse the tracker URL to get the hostname and port
             commands = request.split(" ");
 
@@ -103,14 +101,12 @@ class Peer:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as clientsocket:
                     clientsocket.connect((host, port))
                     # Prepare the registration message
-                    peer_ip, peer_port = clientsocket.getsockname()
-                    print(peer_ip, peer_port)
                     message = {
                         'action': commands[0], 
                         'info_hash': info_hash,
                         'peer_id': self.id,
-                        'ip': peer_ip,
-                        'port': peer_port,
+                        'ip': self.ip,
+                        'port': self.port,
                         'event': 'started'  # Event type
                     }
                     print("Send msg to tracker", message)
@@ -131,21 +127,29 @@ class Peer:
                     missing_pieces = self.incomplete_files[info_hash].get_missing_pieces()
                     print("Missing pieces", missing_pieces)
                     if(len(missing_pieces) > 0):
+                        if len(self.peer_list.items()) < 2:
+                            time.sleep(5)  # Wait for 100ms before the next iteration
+                            self.get_peer_list(info_hash=info_hash, host=host, port=port)
+                            continue
                         i = 0
                         # Get the piece no you want to download
-                        connections = []
-                        for peer_id, peer_addr in self.peer_list:
+                        for peer_id, peer_addr in self.peer_list.items():
+                            print(peer_id)
+                            print(peer_addr)
                             while i < len(missing_pieces):
                                 if(peer_id != self.id):
                                     connection = Thread(target=self.get_piece_from_peer, args=(info_hash, peer_addr['ip'], peer_addr['port'], missing_pieces[i]))
                                     # connections.append(connection)
+                                    connection.start()
                                     connection.join()
-                            i += 1
+                                    i += 1
+                                # time.sleep(5)  # Wait for 100ms before the next iteration
+                                break
                     else: 
                         break
                         # Request to the peer which has that block
-
-                            # Write block to piece
+                print("Download completely!")
+                        # Write block to piece
             elif(commands[0] == "get_peers"): # temp for testing
                 message = {
                     'action': commands[0], 
@@ -165,9 +169,11 @@ class Peer:
                 # commands [1] is the URL to the torrent file
                 torrentFile = torrent.Torrent();
                 torrentFile.load_file_from_path(commands[1])
-
-                trackerURL = torrentFile.get_tracker().decode('utf-8')
-
+                try:
+                    trackerURL = torrentFile.get_tracker().decode('utf-8')
+                except AttributeError as e:
+                    print(e)
+                    continue
                 host, port = trackerURL.split(':')
                 port = int(port)
 
@@ -176,7 +182,7 @@ class Peer:
                 files = []
                 for fileDict in torrentFile.files:
                     files.append(convert_bytes_to_string(fileDict))
-                self.available_files[info_hash] = complete_file.completeFile(PEERS_COMPLETE_DIR, files)
+                self.available_files[info_hash] = complete_file.completeFile(self.completeDir, files)
                 # create a status file with full of 1
 
                 # register info to tracker
@@ -189,8 +195,8 @@ class Peer:
                         'action': commands[0], 
                         'info_hash': info_hash,
                         'peer_id': self.id,
-                        'ip': peer_ip,
-                        'port': peer_port,
+                        'ip': self.ip,
+                        'port': self.port,
                         'event': 'started'  # Event type
                     }
                     print("Send msg to tracker", message)
@@ -214,6 +220,28 @@ class Peer:
                 print("Unknown request") 
                 continue
 
+    def get_peer_list (self, info_hash, host, port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as clientsocket:
+            clientsocket.connect((host, port)) # connect to tracker
+            # Prepare the registration message
+            message = {
+                'action': "get_peers", 
+                'info_hash': info_hash,
+            }
+            print("Send msg to tracker", message)
+
+            # Send the registration message
+            clientsocket.sendall(json.dumps(message).encode('utf-8'))
+
+            # Receive the response from the tracker
+            response = clientsocket.recv(1024).decode("utf-8")
+            response_data = json.loads(response)
+            # Handle the response
+            self.peer_list = response_data['peers']
+            print("List of peers:", self.peer_list)
+
+     
+
     def get_piece_from_peer(self, info_hash, peer_ip, peer_port, piece_no):
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -230,79 +258,67 @@ class Peer:
             }
         })
         sock.send(msg.encode())
-        # c.settimeout(PEER_TIMEOUT)
+        sock.settimeout(2)
         try:
-            msg = json.loads(sock.recv(4096).decode())
+            msg = json.loads(sock.recv(300000).decode())
             if msg['type'] == "response_piece":
                 if msg['data']['status']:
-                    self.incomplete_files[info_hash].write_piece_no(buf=msg['data']['piece'], piece_no=piece_no)
+                    byte_data = base64.b64decode(msg['data']['piece'])
+                    print("write piece no {} buf {}".format (piece_no, byte_data ))
+
+                    self.incomplete_files[info_hash].write_piece_no(buf=byte_data, piece_no=piece_no)
                 else:
                     logging.info("Peer with ip {} does not have piece {}".format(peer_ip, piece_no))            
 
         except socket.timeout:
             print(f"peer {peer_ip} did not send the file")
-        logging.info("Receive piece {} from peer with ip {}".format(piece_no, peer_ip))
-        socket.close()
-
-
+        sock.close()
 
     def listen_to_peer(self, c: socket.socket, addr):
         """
         Listen to peer and give response when asked.
         """
 
-        while True:
-            try:
-                msg = json.loads(c.recv(2048).decode())
+        try:
+            msg = json.loads(c.recv(2048).decode())
+            if msg['type'] == 'request_piece':
+                info_hash = msg['data']['info_hash']
+                piece_no = msg['data']['piece_no']
+                # check if available files has that piece
+                piece = ""
+                if self.available_files.get(info_hash):
+                    piece = self.available_files[info_hash].get_piece_no(piece_no)
+                # check if incomplete files has that piece
+                elif self.incomplete_files.get(info_hash):
+                    piece = self.incomplete_files[info_hash].get_piece_no(piece_no)
+                if(piece != ""):
+                    encoded_data = base64.b64encode(piece).decode('utf-8')
 
-                # if msg['type'] == 'request_file':
-                #     req_file_name = msg['data']
-                #     if req_file_name in self.available_files:
-                #         file_details = pickle.dumps({
-                #             "type": "available_file",
-                #             "data": {
-                #                 "filesize": str(self.available_files[req_file_name].size)
-                #             }
-                #         })
-
-                #         c.send(file_details)
-                
-
-                # find that piece in either complete file and incomplete file
-                if msg['type'] == 'request_piece':
-                    info_hash = msg['data']['info_hash']
-                    piece_no = msg['data']['piece_no']
-                    # TODO: check if available files has that piece
-                    # piece = self.available_files[file_name].get_chunk_no(chunk_no)
-
-                    # TODO: check if incomplete files has that piece
-
-                    ret_msg = json.dumps({
-                        "type": "response_piece",
-                        "data": {
-                            "piece_no": piece_no,
-                            "status": True,
-                            "piece": data
-                        }
-                    })
-
-                    c.send(ret_msg.encode())
-            except EOFError:  # TODO: don't know what is happening here.
-                pass
+                ret_msg = json.dumps({
+                    "type": "response_piece",
+                    "data": {
+                        "piece_no": piece_no,
+                        "status": True if piece != "" else False,
+                        "piece": encoded_data if piece != "" else ""
+                    }
+                })
+                print("Send piece {}".format(piece_no))
+                c.send(ret_msg.encode())
+        except EOFError:  # TODO: don't know what is happening here.
+            pass
 
 
     def download_file ():
-        print("Downlioad")
+        print("Download")
 
 
-
-    def serverThread (self, host, port):
-        print('Server thread running at ip {} port {}'.format(host, port))
-        serversocket = socket.socket()
-        serversocket.bind((host, port))
-        serversocket.listen(5) # maximum 5 connections
+    def runServerThread (self):
+        print('Server thread running at ip {} port {}'.format(self.ip, self.port))
+        self.serverSocket = socket.socket()
+        self.serverSocket.bind((self.ip, self.port))
+        self.serverSocket.listen(5) # maximum 5 connections
         while True:
-            conn, addr = serversocket.accept()
+            conn, addr = self.serverSocket.accept()
             nconn = Thread(target=self.listen_to_peer, args=(conn, addr))
             nconn.start()
             nconn.join();
@@ -321,9 +337,17 @@ def get_host_default_interface_ip():
 
 if __name__ == "__main__":
     hostip = get_host_default_interface_ip();
-    PORT = 11112;
+    parser = argparse.ArgumentParser(
+                        prog='Client',
+                        description='Connect to pre-declard server',
+                        epilog='!!!It requires the server is running and listening!!!')
+    parser.add_argument('--peer-port', type=int)
+    parser.add_argument('--peer-name', type=str)
+    args = parser.parse_args()
+    PORT = args.peer_port
+    NAME = args.peer_name
     peer_id = os.urandom(20).hex()  # Generates a random 20-byte ID
-    peer = Peer(hostip, PORT, "fake_id", "hihi");
+    peer = Peer(hostip, PORT, peer_id, NAME);
     sThread = Thread(target=peer.runServerThread, args=())
     cThread = Thread(target=peer.runClientThread, args=())
     sThread.start()

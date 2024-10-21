@@ -2,7 +2,7 @@ from math import ceil
 import os 
 
 class completeFile():
-    piece_size = 262144 # 256 KB a piece
+    piece_size = 1 # 256 KB a piece
     filePaths = []
     files = [] # {length: x, path: []}
     size = 0
@@ -18,15 +18,13 @@ class completeFile():
             piece_no = ceil(file['length'] / self.piece_size)
             self.pieceBoundaries.append(self.pieceBoundaries[-1] + piece_no)
             self.filePaths.append(self.path + file['path'][-1].decode()) # peer's stored directory + file_name
-            with open(self.filePaths[-1], 'w') as file:
-                pass  # Creates an empty file
         print("Size of file ", self.size)
         self.n_pieces = ceil(self.size / self.piece_size)
         self.pieceBoundaries.pop(0) # delete the first dummy 0
 
     def get_piece_no(self, piece_no):
         fileIdx = self._find_file_of_piece(piece_no)
-        with open(self.filePaths[fileIdx], "r") as file:
+        with open(self.filePaths[fileIdx], "rb") as file:
             if(fileIdx > 0):
                 offset = self.piece_size*(piece_no-self.pieceBoundaries[fileIdx-1])
             else:
