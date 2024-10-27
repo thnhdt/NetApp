@@ -122,7 +122,7 @@ if __name__ == '__main__':
     # Input parameters
     shared_file_path = 'S:/Programming/Network/MyBitTorrent/shared_file'  # Replace with the path to your file
     torren_file_path = 'S:/Programming/Network/MyBitTorrent/torrent/'
-    tracker_url = '192.168.0.2:22236'  # Replace with the tracker URL
+    tracker_url = '10.230.53.244:22236'  # Replace with the tracker URL
     output_torrent = 'test.torrent'  # Output .torrent file path
     torrent = Torrent();
     torrent.create_multi_file_torrent(shared_file_path=shared_file_path,

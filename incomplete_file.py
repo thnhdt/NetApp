@@ -86,8 +86,10 @@ class incompleteFile():
                 file.write(buf)
             print("buf", buf)
             print("Write price no {} into file {} with offset {}".format(piece_no, fileIdx, offset) )
+            return True
         else: 
             print("Write price no {} failed".format(piece_no))
+            return False
 
     def _find_file_of_piece(self, piece_no):
         ans = 0
@@ -106,6 +108,8 @@ class incompleteFile():
         else:
             print("Piece hash is different")
             return False
+    def get_bitfield (self):
+        return self.piece_status
 
 
     def get_missing_pieces (self):

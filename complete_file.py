@@ -34,6 +34,8 @@ class completeFile():
         # self.read_fp.seek(offset, 0)
         # piece = self.read_fp.read(self.piece_size)
         return data
+    def get_bitfield (self):
+        return "1" * self.n_pieces
     
     def _find_file_of_piece(self, piece_no):
         ans = 0
