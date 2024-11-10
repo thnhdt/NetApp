@@ -5,6 +5,7 @@ HCMUTorrent
 **Install libraries**
 
 `pip install -r requirements.txt`
+`pip install psutil`
 
 **Configure**
 

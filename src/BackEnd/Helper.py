@@ -6,8 +6,7 @@ import requests
 import platform
 
 chunk_SIZE = 512 * 1024
-tracker_url = "http://192.168.179.17:18000"
-
+tracker_url = "http://192.168.1.4:18000"
 
 # def get_wireless_ipv4():
 #     for interface, addrs in psutil.net_if_addrs().items():
@@ -16,7 +15,6 @@ tracker_url = "http://192.168.179.17:18000"
 #                 if addr.family == socket.AF_INET:
 #                     return addr.address
 #     return None
-
 
 def get_wireless_ipv4():
     for interface, addrs in psutil.net_if_addrs().items():
