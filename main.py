@@ -1,390 +1,336 @@
-import socket
-import threading
-
-from concurrent.futures import ThreadPoolExecutor
-from helper import main as helper
-import json
 import os
-import time
-from dotenv import load_dotenv
+import json
 import math
+import shlex
+import time
+import socket
+import hashlib
+import threading
 from queue import Queue
-import random
+from dotenv import load_dotenv
 from prettytable import PrettyTable
+from helper import create_sample_file
 
-HOST = '127.0.0.1'
-PORT = 65431
+terminate_flag = False
 
 load_dotenv()
+STORAGE_PATH = "storage"
+FILE_STATUS_PATH = "file_status.json"
+HOST_IP = os.getenv('HOST_IP', '127.0.0.1')
+HOST_PORT = int(os.getenv('HOST_PORT', '65431'))
+PEER_IP = os.getenv('PEER_IP', '127.0.0.1')
+PEER_PORT = int(os.getenv('PEER_PORT', '65432'))
 PIECE_SIZE = int(os.getenv('PIECE_SIZE', '512'))
 
-def start_peer_server(peer_ip='127.0.0.1', peer_port=65432):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        server_socket.bind((peer_ip, peer_port))
-        server_socket.listen(5)
-        print(f"Peer is listening at {peer_ip}:{peer_port}")
-        print("Please type your command:\n")
+# Tạo thư mục lưu trữ nếu chưa có
+if not os.path.exists(STORAGE_PATH):
+    os.makedirs(STORAGE_PATH)
 
-        while True:
-            client_socket, client_address = server_socket.accept()
-            print(f"Connected to {client_address}")
-            
-            handle_request(client_socket)
-
-def handle_request(client_socket):
-    with client_socket:
-        data = client_socket.recv(1024).decode('utf-8')
-        request = json.loads(data)
-
-        if request['type'] == 'GET_FILE_STATUS':
-            info_hash = request['info_hash']
-
-            response = {
-                'type': 'FILE_STATUS',
-                'info_hash': info_hash,
-                'pieces_status': []
-            }
-
-            with open('file_status.json', 'r') as f:
-                data = json.load(f)
-
-            if not data[info_hash]:
-                client_socket.sendall(json.dumps(response).encode('utf-8'))
-                return
-            file_name = f"storage/{data[info_hash]['name']}"
-            
-            response = {
-                'type': 'FILE_STATUS',
-                'info_hash': info_hash,
-                'pieces_status': data[info_hash]['piece_status']
-            }
-
-            client_socket.sendall(json.dumps(response).encode('utf-8'))
-
-        elif request['type'] == 'GET_FILE_CHUNK':
-            info_hash = request['info_hash']
-            chunk_list = request['chunk_list']
-            chunk_data = []
-
-            response = {
-                'type': 'FILE_CHUNK',
-                'info_hash': info_hash,
-                'chunk_data': chunk_data
-            }
-
-            with open('file_status.json', 'r') as f:
-                data = json.load(f)
-
-            if not data[info_hash]:
-                client_socket.sendall(json.dumps(response).encode('utf-8'))
-                return
-            file_name = f"storage/{data[info_hash]['name']}"
-            
-            try:
-                with open(file_name, "rb") as f:
-                    for chunk_index in chunk_list:
-                        f.seek(chunk_index * PIECE_SIZE)
-                        data = f.read(PIECE_SIZE)
-                        chunk_data.append(data.decode('latin1'))
-            except FileNotFoundError:
-                print(f"File {file_name} does not exit.")
-                client_socket.sendall(json.dumps(response).encode('utf-8'))
-                return
-            
-            response['chunk_data'] = chunk_data
-
-            client_socket.sendall(json.dumps(response).encode('utf-8'))
-        elif request['type'] == 'PING':
-            response = {
-                'type': 'PONG'
-            }
-            client_socket.sendall(json.dumps(response).encode('utf-8'))
-
-def connect_to_peer_and_get_file_status(peer_ip, peer_port, info_hash):
+# --- Connect Handler --- #
+def connect_to_server(host_ip, host_port):
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            
-            s.connect((peer_ip, peer_port))
-            print(f"Connected to {peer_ip}:{peer_port}")
-            
-            request = {
-                'type': 'GET_FILE_STATUS',
-                'info_hash': info_hash
-            }
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((host_ip, host_port))
+        print(f"Connected to server {host_ip}:{host_port}")
+        return client_socket
+    except socket.error as e:
+        print(f"Error connecting to server: {e}")
+        return None
 
-            s.sendall(json.dumps(request).encode('utf-8'))
-            
-            response_data = s.recv(4096)
-            response = json.loads(response_data.decode('utf-8'))
-            if response['type'] == 'FILE_STATUS' and response['info_hash'] == info_hash:
-                pieces_status = response['pieces_status']
-                return peer_ip, peer_port, pieces_status
-            else:
-                return None, None, None
-    except (socket.error, ConnectionRefusedError, TimeoutError) as e:
-        print(f"Connection error: {e}")
-        return None, None, None
+def disconnect_from_server(client_socket):
+    if client_socket:
+        try:
+            client_socket.close()
+            print("Disconnected from server.")
+        except socket.error as e:
+            print(f"Error disconnecting from server: {e}")
 
-def connect_to_peer_and_download_file_chunk(peer_ip, peer_port, info_hash, chunk_list, file_path):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((peer_ip, peer_port))
-        print(f"Connected to {peer_ip}:{peer_port}")
-        
-        request = {
-            'type': 'GET_FILE_CHUNK',
-            'info_hash': info_hash,
-            'chunk_list': chunk_list
+def start_peer_server(peer_ip, peer_port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as peer_socket:
+        peer_socket.bind((peer_ip, peer_port))
+        peer_socket.listen(5)
+        print(f"Peer 1 started successfully!\nListening on {peer_ip}:{peer_port}")
+        print("Please type your command (publish file_name | fetch file_name | download file_name | create file_name num_chunks | exit)\n")
+
+        while not terminate_flag:
+            try:
+                peer_socket.settimeout(1)
+                client_socket, client_address = peer_socket.accept()
+                print(f"Connected to {client_address}")
+                # handle_request(client_socket)
+            except socket.timeout:
+                continue
+
+# --- Helper --- #
+def load_file_status():
+    if os.path.exists(FILE_STATUS_PATH):
+        with open(FILE_STATUS_PATH, "r") as file:
+            return json.load(file)
+    return {}
+
+def save_file_status(file_status):
+    with open(FILE_STATUS_PATH, "w") as file:
+        json.dump(file_status, file, indent=4)
+
+def check_local_files(file_name):
+    file_status = load_file_status()
+    return True if file_name in file_status else False
+
+def check_local_piece_files(file_name):
+    file_status = load_file_status()
+    if file_name in file_status:
+        return file_status[file_name]["piece_status"]
+    return False
+
+def create_table(pieces, select = True):
+    table = PrettyTable()
+    table.field_names = ["Piece Number", "Piece Status"]
+    
+    for i, piece in enumerate(pieces):
+        piece_status = piece.strip() if piece else "(empty) - Cannot select" if select == True else "(empty)"
+        table.add_row([i + 1, piece_status])
+
+    return table
+
+def generate_info_hash(file_path, hash_algorithm = 'sha1'):
+    if hash_algorithm == 'sha1':
+        hash_func = hashlib.sha1()
+    elif hash_algorithm == 'sha256':
+        hash_func = hashlib.sha256()
+    else:
+        raise ValueError("Unsupported hash algorithm. Use 'sha1' or 'sha256'.")
+
+    with open(file_path, 'rb') as file:
+        while chunk := file.read(4096):
+            hash_func.update(chunk)
+
+    return hash_func.hexdigest()
+
+# --- Storage & File Update --- #
+def update_file_status(file_name, piece_status):
+    file_status = load_file_status()
+    
+    if file_name not in file_status:
+        file_status[file_name] = {
+            "piece_status": piece_status,
+            "total_pieces": len(piece_status),
         }
+    else:
+        file_status[file_name]["piece_status"] = piece_status
+    
+    save_file_status(file_status)
 
-        s.sendall(json.dumps(request).encode('utf-8'))
-        
-        response_data = s.recv(4096)
-        response = json.loads(response_data.decode('utf-8'))
-        if response['type'] == 'FILE_CHUNK' and response['info_hash'] == info_hash:
-            chunk_data = response['chunk_data']
-            
-            with open(file_path, "r+b") as f:  
-                for i, chunk in enumerate(chunk_data):
-                    f.seek(chunk_list[i] * PIECE_SIZE)
-                    f.write(chunk.encode('latin1'))
-                    print(f"Chunk {chunk_list[i]} has been written into file")
-        else:
-            print("Has been received invalid response from peer")
-
-
-def download(info_hash, tracker_urls):
-    file_name, file_size, peers_keep_file = helper.get_file_info_and_peers_keep_file_from_trackers(info_hash, tracker_urls)
-
-    file_path = f"storage/{file_name}"
-
-    num_of_pieces = math.ceil(file_size / int(PIECE_SIZE))
-
+def store_file_chunk(file_name, chunk_index, data, fill_missing=False):
+    file_path = os.path.join(STORAGE_PATH, file_name)
+    
     if not os.path.exists(file_path):
         with open(file_path, "wb") as f:
-            pass
-
-    peers_file_status = {}
-    chunk_count = {}
-
-    piece_status_lock = threading.Lock()
-    chunk_count_lock = threading.Lock()
-    piece_download_lock = threading.Lock()
-    file_status_lock = threading.Lock()
-
-    connection_queue = Queue()
-
-    for address, port in peers_keep_file:
-        if address != HOST or port != PORT:
-            connection_queue.put((address, port))
-
-    def get_file_status():
-        while not connection_queue.empty():
-            ip, port = connection_queue.get()
-            try:
-                peer_ip, peer_port, pieces_status = connect_to_peer_and_get_file_status(ip, port, info_hash)
-                if peer_ip and peer_port and pieces_status and len(pieces_status) > 0:
-                    if len(pieces_status) != num_of_pieces:
-                        continue
-                    
-                    with piece_status_lock:
-                        peers_file_status[(peer_ip, peer_port)] = pieces_status
-
-                    with chunk_count_lock:
-                        for chunk_index, has_chunk in enumerate(pieces_status):
-                            if has_chunk:
-                                if chunk_index not in chunk_count:
-                                    chunk_count[chunk_index] = 0
-                                chunk_count[chunk_index] += 1
-            except:
-                print(f"Error connecting to {ip}:{port}")
-            connection_queue.task_done()
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        for _ in range(5):
-            executor.submit(get_file_status)
-
-    connection_queue.join()
-
-    chunk_peers_map = {}
-    for chunk_index in range(num_of_pieces):
-        peers_with_chunk = [(peer, sum(status)) for peer, status in peers_file_status.items() if status[chunk_index]]
-        if len(peers_with_chunk) > 0:
-            chunk_peers_map[chunk_index] = peers_with_chunk
-            random.shuffle(chunk_peers_map[chunk_index])
-
-    chunk_queue = Queue()
-    for chunk_index in chunk_peers_map.keys():
-        chunk_queue.put(chunk_index)
-
-    piece_has_been_downloaded = [0 for _ in range(num_of_pieces)]
-
-    def download_chunk():
-        while not chunk_queue.empty():
-            chunk_index = chunk_queue.get()
-            peers = chunk_peers_map.get(chunk_index, [])
-
-            for (ip, port), _ in peers:
-                with piece_download_lock:
-                    if piece_has_been_downloaded[chunk_index] == 1:
-                        continue
-                
-                try:
-                    connect_to_peer_and_download_file_chunk(ip, port, info_hash, [chunk_index], file_path)
-
-                    with piece_download_lock:
-                        piece_has_been_downloaded[chunk_index] = 1
-                    break
-                except Exception as e:
-                    print(f"Error downloading chunk {chunk_index} from {ip}:{port}: {e}")
-
-            chunk_queue.task_done()
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        for _ in range(5):
-            executor.submit(download_chunk)
-
-    chunk_queue.join()
-
-    def update_file_status():
-        with file_status_lock:
-            try:
-                with open('file_status.json', 'r') as f:
-                    file_status_data = json.load(f)
-                    if not file_status_data.get(info_hash):
-                        file_status_data[info_hash] = {
-                            'name': file_name,
-                            'piece_status': piece_has_been_downloaded
-                        }
-                    else:
-                        file_status_data[info_hash]['piece_status'] = piece_has_been_downloaded
-
-                with open('file_status.json', 'w') as json_file:
-                    json.dump(file_status_data, json_file, indent=4)
-            except FileNotFoundError:
-                print('File file_status.json does not exist')
-
-    update_file_status()
-
-    helper.publish(tracker_urls, info_hash, file_name, file_size, HOST, PORT)
-    print('Download and announce server successfully')
-
-
-def fetch_file(server_url, info_hash):
-    response = None
-    if info_hash:
-        response = helper.fetch_file_by_info_hash(server_url, info_hash)
-    else:
-        response = helper.fetch_all_file(server_url)
-
-    if response and response.status_code == 200 and response.json() and response.json()['data']:
-        table = PrettyTable()
-        table.field_names = ["Info Hash", "Name", "Size (bytes)", "Published At", "Shared by", "Peers"]
-
-        for item in response.json().get('data', []):
-            user = item.get('user')
-            if user:
-                user_full_name = f"{user.get('firstName', '')} {user.get('lastName', '')}".strip() or None
-            else:
-                user_full_name = None
-            
-            peers = item.get('peers', [])
-            
-            if peers:
-                first_peer = peers[0]
-                table.add_row([
-                    item.get('infoHash'), 
-                    item.get('name'), 
-                    item.get('size'), 
-                    item.get('createdAt'), 
-                    user_full_name, 
-                    f"{first_peer.get('address')}:{first_peer.get('port')}"
-                ])
-                
-                for peer in peers[1:]:
-                    table.add_row([
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        f"{peer.get('address')}:{peer.get('port')}"
-                    ])
-            else:
-                table.add_row([
-                    item.get('infoHash'), 
-                    item.get('name'), 
-                    item.get('size'), 
-                    item.get('createdAt'), 
-                    user_full_name, 
-                    "No peers"
-                ])
-
-        print(table)
-        
-def publish(file_path, tracker_urls):
-    if not os.path.exists(file_path):
-        print(f'Path {file_path} does not exist')
-        return
-
-    if not os.path.isfile(file_path):
-        print(f'{file_path} is not a file')
-        return
+            f.write(b"")
     
-    info_hash = helper.generate_info_hash(file_path)
-    helper.publish(tracker_urls, info_hash, os.path.basename(file_path), os.path.getsize(file_path), HOST, PORT)
+    with open(file_path, "r+b") as f:
+        f.seek(chunk_index * (PIECE_SIZE + 1))
+        if fill_missing:
+            f.write((b"\x00" * PIECE_SIZE) + b"\n")
+        else:
+            f.write(data.encode('latin1') + b"\n")
 
-    print('Publish file successfully')
+def load_file_chunks(file_name):
+    chunk_data = []
+    file_path = os.path.join(STORAGE_PATH, file_name)
 
-def process_input(cmd):
+    if not os.path.exists(file_path):
+        return []
+
+    with open(file_path, "rb") as f:
+        total_size = os.path.getsize(file_path)
+        total_chunks = math.ceil(total_size / (PIECE_SIZE + 1))
+
+        for chunk_index in range(total_chunks):
+            f.seek(chunk_index * (PIECE_SIZE + 1))
+            data = f.read(PIECE_SIZE)
+            chunk_data.append(data.decode('latin1').rstrip('\x00'))
+
+    return chunk_data
+
+# --- Helper Functions for Publish --- #
+def handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash, piece_size):
+    print(f"File {file_name} has {len(pieces)} pieces:")
+    print(create_table(pieces))
+
+    user_input_num_piece = input(f"Please select piece numbers to publish (e.g., 1 3 5): ")
+    num_order_in_file = shlex.split(user_input_num_piece)
+
+    selected_chunks = []
+    for i in num_order_in_file:
+        try:
+            index = int(i) - 1
+            if pieces[index]:
+                selected_chunks.append(index)
+                print(f"Selected Piece {i}: {pieces[index].strip()}")
+            else:
+                print(f"Piece {i} is empty and cannot be selected.")
+        except (ValueError, IndexError):
+            print(f"Invalid piece number: {i}")
+
+    if file_hash:
+        publish_piece_file(client_socket, file_name, file_size, file_hash, piece_size, selected_chunks)
+    else:
+        print("No valid pieces selected.")
+
+def publish_piece_file(client_socket, file_name, file_size, file_hash, piece_size, selected_chunks):
+    peers_hostname = socket.gethostname()
+    command = {
+        "action": "publish",
+        "peers_ip":PEER_IP,
+        "peers_port":PEER_PORT,
+        "peers_hostname":peers_hostname,
+        "file_name": file_name,
+        "file_size": file_size,
+        "file_hash": file_hash,
+        "piece_size": piece_size,
+        "num_order_in_file": selected_chunks,
+    }
+    print(f"Send to server: {command}")
+    print("Publish selected pieces successfully!")
+    # try:
+    #     client_socket.sendall(json.dumps(command).encode() + b'\n')
+    #     response = client_socket.recv(4096).decode()
+    #     print("Server response:", response)
+    # except socket.error as e:
+    #     print(f"Error while publishing file pieces: {e}")
+
+# --- Publish handler --- #
+def publish(client_socket, file_name):
+    file_path = os.path.join(STORAGE_PATH, file_name)
+    if not os.path.exists(file_path):
+        print(f"File '{file_name}' does not exist in storage.")
+        return
+
+    pieces = load_file_chunks(file_name)
+    file_size = len(pieces) * PIECE_SIZE
+
+    
+    file_hash = generate_info_hash(file_path, hash_algorithm='sha1')
+
+    if not pieces:
+        print(f"No pieces found for file '{file_name}'.")
+        return
+
+    handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash, PIECE_SIZE)
+
+# --- Fetch handler --- #
+def fetch(client_socket, file_name):
+    file_status = load_file_status()
+        
+    if check_local_files(file_name):
+        pieces = load_file_chunks(file_name)
+        print(f"File {file_name} already exists locally with {len(pieces)} pieces:")
+        print(create_table(pieces, False))
+
+    print(f"Fetching status file: '{file_name}' from server...")
+
+    command = {
+        "action": "fetch",
+        "file_name": file_name,
+    }
+    try:
+        client_socket.sendall(json.dumps(command).encode() + b'\n')
+        response = client_socket.recv(4096).decode()
+        server_response = json.loads(response)
+
+        if "file_size" in server_response:
+            file_size = server_response["file_size"]
+            num_chunks = math.floor(file_size / PIECE_SIZE)
+            print(f"File size: {file_size} bytes, Total chunks: {num_chunks}")
+            
+            if 'peers_info' in server_response:
+                peers_info = server_response['peers_info']
+                peer_table = PrettyTable()
+                peer_table.field_names = ["Number", "Peer Hostname", "Peer IP", "Peer Port", "File Hash", "File Size", "Piece Size", "Piece Order"]
+
+                for peer_info in peers_info:
+                    peer_table.add_row([
+                        peer_info['num_order_in_file'],
+                        peer_info['peers_hostname'],
+                        peer_info['peers_ip'],
+                        peer_info['peers_port'],
+                        peer_info['file_hash'],
+                        peer_info['file_size'],
+                        peer_info['piece_size'],
+                        peer_info['num_order_in_file']
+                    ])
+                print(f"Hosts with the file {file_name}:\n{peer_table}")
+            else:
+                print("No peers have the file.")
+        
+        else:
+            print("No file size returned from server.")
+
+    except socket.error as e:
+        print(f"Error while fetching file: {e}")
+
+# --- UserInput handler --- #
+def process_input(cmd, client_socket):
+    global terminate_flag
+
     params = cmd.split()
 
     if len(params) == 0:
+        print("Please type your command (publish file_name | fetch file_name | create file_name num_chunks | exit)\n")
         return
+
     try:
-        if params[0] == 'download':
+        if params[0] == 'exit':
+            terminate_flag = True
+
+            if client_socket:
+                disconnect_from_server(client_socket)
+
+            print("Stopping the server...")
+        elif params[0] == 'create':
             if len(params) == 1:
-                print('Argument info_hash is required')
-            if len(params) == 2:
-                print('Tracker urls must be specified')
-            download(params[1], params[2:])
-        elif params[0] == 'fetch':
-            if len(params) == 1:
-                print('Argument server url is required')
+                print('Argument file_name is required')
+                return
             elif len(params) == 2:
-                fetch_file(params[1], None)
-            elif len(params) == 3:
-                fetch_file(params[1], params[2])
-            else:
-                raise
+                print('Argument num_chunks is required')
+                return
+            create_sample_file(params[1], int(params[2]))
         elif params[0] == 'publish':
             if len(params) == 1:
-                print('Argument file path is required')
+                print('Argument file_name is required')
                 return
-            elif len(params) == 2:
-                print('Tracker urls must be specified')
+            publish(client_socket, params[1])
+        elif params[0] == 'fetch':
+            if len(params) == 1:
+                print('Argument file_name is required')
                 return
-            publish(params[1], params[2:])
-        
+            fetch(client_socket, params[1])
         else:
-            print('Invalid command')
-    except IndexError as e:
-        print('Invalid command')
+            print('Invalid command (publish file_name | fetch file_name | download file_name | exit)')
+    except IndexError:
+        print('Invalid command (publish file_name | fetch file_name | download file_name | exit)')
 
 if __name__ == "__main__":
+    client_socket = None
+
     try:
-        server_thread = threading.Thread(target=start_peer_server, args=(HOST, PORT))
+        client_socket = connect_to_server(HOST_IP, HOST_PORT)
+
+        server_thread = threading.Thread(target=start_peer_server, args=(PEER_IP, PEER_PORT))
         server_thread.start()
-
         time.sleep(1)
-        while True:
-            cmd = input('>>')
-            if cmd == 'exit':
-                break
 
-            process_input(cmd)
+        while not terminate_flag:
+            cmd = input("Command: ")
+            process_input(cmd, client_socket)
 
     except KeyboardInterrupt:
-        print('\nMessenger stopped by user')
+        terminate_flag = True
+
+        if client_socket:
+            disconnect_from_server(client_socket)
+
+        print('\nPeer stopped by user.')
+
     finally:
-        print("Cleanup done.")
-        
+        print("Peer stopped and resources cleaned up.")
