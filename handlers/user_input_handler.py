@@ -4,12 +4,13 @@ from handlers.download_handler import download
 from handlers.terminate_handler import set_terminate_flag
 from handlers.connect_handler import disconnect_from_server
 from handlers.create_sample_file_handler import create_sample_file
+from handlers.get_peers import get_peers
 
 def process_input(cmd, client_socket):
     params = cmd.split()
 
     if len(params) == 0:
-        print("Please type your command (publish file_name | fetch file_name | download file_name | create file_name num_chunks | exit)\n")
+        print("Please type your command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers | exit)\n")
         return
 
     try:
@@ -45,6 +46,12 @@ def process_input(cmd, client_socket):
                 print('Argument file_name is required')
                 return
             download(client_socket, params[1])
+
+        elif params[0] == 'get_peers':
+            if len(params) == 1:
+                print('Argument file_name is required')
+                return
+            get_peers(client_socket, params[1])
 
         else:
             print('Invalid command (publish file_name | fetch file_name | download file_name | create file_name num_chunks | exit)')

@@ -13,5 +13,16 @@
             0
         ],
         "total_pieces": 10
+    },
+    "5.txt": {
+        "piece_status": [
+            1,
+            1,
+            0,
+            0,
+            1,
+            1
+        ],
+        "total_pieces": 6
     }
 }

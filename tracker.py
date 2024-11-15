@@ -31,6 +31,8 @@ def handle_message(conn, message):
             handle_publish(conn, message)
         elif message['action'] == 'get_peers':
             handle_get_peers(conn, message)
+        elif message['action'] == 'fetch':
+            handle_fetch(conn, message)
         elif message['action'] == 'exit':
             handle_exit(message)
         else:
@@ -49,7 +51,6 @@ def handle_publish(conn, message):
     piece_size = message['piece_size']
     num_order_in_file = message['num_order_in_file']
 
-    # Store the published file information in peer_dict
     if file_hash not in peer_dict:
         peer_dict[file_hash] = {
             "file_name": file_name,
@@ -58,7 +59,6 @@ def handle_publish(conn, message):
             "peers": {}
         }
 
-    # Add the peer information
     peer_id = f"{peers_ip}:{peers_port}"
     peer_dict[file_hash]["peers"][peer_id] = {
         "hostname": peers_hostname,
@@ -68,31 +68,62 @@ def handle_publish(conn, message):
     }
 
     print(f"Updated peer_dict for file {file_name}: {peer_dict[file_hash]}")
-
-    # Send a response back to the client
     response = {"status": "success", "message": "File published successfully"}
     conn.send(json.dumps(response).encode())
 
+def handle_fetch(conn, message):
+    file_hash = find_by_file_name(message['file_name'])
+    if file_hash:
+        peers_info = peer_dict[file_hash]['peers']
+        res_peers_info = [
+            {
+                'num_order_in_file': peer['num_order_in_file'],
+                'peers_hostname': peer['hostname'],
+                'peers_ip': peer['ip'],
+                'peers_port': peer['port'],
+                'file_hash': file_hash,
+                'file_size': peer_dict[file_hash]['file_size'],
+                'piece_size': peer_dict[file_hash]['piece_size']
+            }
+            for peer in peers_info.values()
+        ]
+        response = {
+            "status": "success",
+            "file_size": peer_dict[file_hash]['file_size'],
+            "peers_info": res_peers_info
+        }
+        print(response)
+    else:
+        response = {"status": "error", "message": "File not found"}
+        print(response)
+    conn.send(json.dumps(response).encode())
+
+def find_by_file_name(file_name):
+    for file_hash, details in peer_dict.items():
+        if details['file_name'] == file_name:
+            return file_hash
+    return None
+
 def handle_get_peers(conn, message):
-    file_hash = message['file_hash']
+    file_hash = find_by_file_name(message['file_name'])
     if file_hash in peer_dict:
         response = {'peers': peer_dict[file_hash]['peers']}
     else:
-        response = {'peers': {}}
+        response = {}
     conn.send(json.dumps(response).encode())
 
 def handle_exit(message):
     peer_id = message['peer_id']
-    file_hash = message['file_hash']
-    if file_hash in peer_dict and peer_id in peer_dict[file_hash]['peers']:
-        del peer_dict[file_hash]['peers'][peer_id]
-        print(f"Peer {peer_id} has exited. Updated peer_dict: {peer_dict}")
+    for file_hash in peer_dict:
+        if peer_id in peer_dict[file_hash]['peers']:
+            del peer_dict[file_hash]['peers'][peer_id]
+            print(f"Peer {peer_id} has exited. Updated peer_dict for file {file_hash}: {peer_dict[file_hash]}")
 
 
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP connection
     try:
-       s.connect(('8.8.8.8', 1)) # This connects the socket to the remote address 8.8.8.8 (Google's public DNS server) on port 1.
+       s.connect(('8.8.8.8', 1))
        ip = s.getsockname()[0]
     except Exception:
        ip = '127.0.0.1'
@@ -123,16 +154,17 @@ def server_command_shell():
         if cmd_parts:
             action = cmd_parts[0]
             if action == "discover" and len(cmd_parts) == 2:
-                print("Implementing.")
                 id = cmd_parts[1]
                 thread = threading.Thread(target=discover_files, args=(id,))
                 thread.start()
             elif action == "ping" and len(cmd_parts) == 2:
                 id = cmd_parts[1]
-                thread = threading.Thread(target=ping_host, args=(id,))
+                thread = threading.Thread(target=ping, args=(id,))
                 thread.start()
             elif action == "exit":
                 break
+            elif action == "peer_dict":
+                print(peer_dict)
             else:
                 print("Unknown command or incorrect usage.")
 
@@ -142,33 +174,18 @@ def discover_files(peers_hostname):
     print(f"Files on {peers_hostname}: {files}")
 
 def clients_files(peers_hostname):
-    peer_info = get_peer_ip_by_hostname(peer_dict, peers_hostname)
-    print(peer_info)
-    peer_ip = peer_info["ip"]
-    if peer_ip:
-        peer_port = peer_info["port"]
-        peer_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        peer_sock.connect((peer_ip, peer_port))
-        request = {'action': 'request_file_list'}
-        #! conn_handler -> 'action': 'request_file_list'
-        peer_sock.sendall(json.dumps(request).encode() + b'\n')
-        response = json.loads(peer_sock.recv(4096).decode())
-        peer_sock.close()
-        if 'files' in response:
-            return response['files']
-        else:
-            return "Error: No file list in response"
-    else:
-        return "Error: Client not connected"
+    files = []
+    for file_hash, file_info in peer_dict.items():
+        peers = file_info["peers"]
+        for peer_key, peer_info in peers.items():
+            if peer_info["hostname"] == peers_hostname:
+                files.append(file_info['file_name'])
+    return files
 
-    
 #ping
-def ping_host(peers_hostname):
-    peer_info = get_peer_ip_by_hostname(peer_dict, peers_hostname)
-    print(peer_info)
-    peer_ip = peer_info["ip"]
-    if peer_ip:
-        peer_port = peer_info["port"]
+def ping(peers_hostname):
+    peer_ip, peer_port = ip_port_by_hostname(peer_dict, peers_hostname)
+    if peer_ip and peer_port != None:
         peer_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         peer_sock.connect((peer_ip, peer_port))
         request = {'action': 'ping'}
@@ -180,11 +197,12 @@ def ping_host(peers_hostname):
     else:
         print(f"{peers_hostname} is not in network")
 
-def get_peer_ip_by_hostname(peer_dict, hostname):
-    for file_info in peer_dict.items():
-        for peer_info in file_info['peers'].values():
-            if peer_info['hostname'] == hostname:
-                return peer_info
+def ip_port_by_hostname(peer_dict, hostname):
+    for file_hash, file_info in peer_dict.items():
+        peers = file_info["peers"]
+        for peer_key, peer_info in peers.items():
+            if peer_info["hostname"] == hostname:
+                return peer_info["ip"], peer_info["port"]
     return None
 
 if __name__ == "__main__":

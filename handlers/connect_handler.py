@@ -117,9 +117,6 @@ def handleReq(client_socket, request_data):
                 }
                 client_socket.sendall(json.dumps(response).encode() + b'\n')
 
-    elif request_data.get("action") == "request_file_list":
-        print("Implementing")
-        return
 
     else:
         response = {"status": "error", "message": "Unsupported action."}
