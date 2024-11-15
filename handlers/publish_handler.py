@@ -1,10 +1,12 @@
 import os
 import shlex
 import socket
+import json
 from config import PEER_IP, PEER_PORT, PIECE_SIZE, STORAGE_PATH
 from handlers.utils import create_table, generate_info_hash, load_file_chunks
 
 def handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash):
+    print(pieces)
     print(f"File {file_name} has {len(pieces)} pieces:")
     print(create_table(pieces))
 
@@ -43,12 +45,13 @@ def publish_piece_file(client_socket, file_name, file_size, file_hash, selected_
     }
     print(f"Send to server: {command}")
     print("Publish selected pieces successfully!")
-    # try:
-    #     client_socket.sendall(json.dumps(command).encode() + b'\n')
-    #     response = client_socket.recv(4096).decode()
-    #     print("Server response:", response)
-    # except socket.error as e:
-    #     print(f"Error while publishing file pieces: {e}")
+    #SERVER RESPONSE
+    try:
+        client_socket.sendall(json.dumps(command).encode() + b'\n')
+        response = client_socket.recv(4096).decode()
+        print("Server response:", response)
+    except socket.error as e:
+        print(f"Error while publishing file pieces: {e}")
     
 def publish(client_socket, file_name):
     file_path = os.path.join(STORAGE_PATH, file_name)

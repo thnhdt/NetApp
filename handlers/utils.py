@@ -38,14 +38,21 @@ def check_local_piece_files(file_name):
     return False
 
 # Table Display
+# def create_table(pieces, select=True):
+#     table = PrettyTable()
+#     table.field_names = ["Piece Number", "Piece Status"]
+#     for i, piece in enumerate(pieces):
+#         piece_status = piece.strip() if piece else "(empty) - Cannot select" if select else "(empty)"
+#         table.add_row([i + 1, piece_status])
+#     return table
 def create_table(pieces, select=True):
     table = PrettyTable()
-    table.field_names = ["Piece Number", "Piece Status"]
+    table.field_names = ["Piece Number", "Piece Content"]
     for i, piece in enumerate(pieces):
-        piece_status = piece.strip() if piece else "(empty) - Cannot select" if select else "(empty)"
+        piece_status = piece.strip().replace('\n', '').replace('\r', '') if piece else "(empty) - Cannot select" if select else "(empty)"
         table.add_row([i + 1, piece_status])
+        print(str(piece_status))
     return table
-
 # File Hashing
 def generate_info_hash(file_path, hash_algorithm='sha1'):
     if hash_algorithm == 'sha1':

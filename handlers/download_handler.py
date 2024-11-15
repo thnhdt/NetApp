@@ -23,21 +23,21 @@ def download(client_socket, file_name):
         "peers_hostname": socket.gethostname(),
         "file_name": file_name,
     }
-
-    # try:
-    #     client_socket.sendall(json.dumps(command).encode() + b'\n')
-    #     response = client_socket.recv(4096).decode()
-    #     server_response = json.loads(response)
-    # except (socket.error, json.JSONDecodeError) as e:
-    #     print(f"Error while downloading file info: {e}")
-    #     return
+    #REAL RESPONSE
     try:
-        # Thay thế đoạn gửi và nhận từ socket bằng mock response
-        response = mock_server_response()
+        client_socket.sendall(json.dumps(command).encode() + b'\n')
+        response = client_socket.recv(4096).decode()
         server_response = json.loads(response)
-    except json.JSONDecodeError as e:
-        print(f"Error while decoding mock server response: {e}")
+    except (socket.error, json.JSONDecodeError) as e:
+        print(f"Error while downloading file info: {e}")
         return
+    # try:
+    #     # Thay thế đoạn gửi và nhận từ socket bằng mock response
+    #     response = mock_server_response()
+    #     server_response = json.loads(response)
+    # except json.JSONDecodeError as e:
+    #     print(f"Error while decoding mock server response: {e}")
+    #     return
 
     file_size = server_response["file_size"]
     num_chunks = math.ceil(file_size / PIECE_SIZE)
