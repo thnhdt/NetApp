@@ -1,6 +1,7 @@
 import json
 import socket
 from handlers.terminate_handler import get_terminate_flag
+from config import PEER_IP, PEER_PORT
 from handlers.utils import check_local_files, check_local_piece_files, load_file_chunk
 
 def connect_to_server(host_ip, host_port):
@@ -15,7 +16,14 @@ def connect_to_server(host_ip, host_port):
 
 def disconnect_from_server(client_socket):
     if client_socket:
+        command = {
+            "action": "exit",
+            "peers_ip": PEER_IP,
+            "peers_port": PEER_PORT,
+            "peers_hostname": socket.gethostname(),
+        }
         try:
+            client_socket.sendall(json.dumps(command).encode() + b'\n')
             client_socket.close()
             print("Disconnected from server.")
         except socket.error as e:

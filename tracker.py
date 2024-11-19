@@ -11,16 +11,17 @@ import sys
 
 peer_dict = {}
 lock = threading.Lock()
+terminate_event = threading.Event()
 
 def new_connection(conn, addr):
     print(f"New connection from {addr}")
-    while True:
+    while not terminate_event.is_set():
         data = conn.recv(1024).decode('utf-8');
         if not data:
             time.sleep(1)  # Wait for 100ms before the next iteration
             continue
         message = json.loads(data)
-        print(f"Received message from {addr}: {message}")
+        # print(f"Received message from {addr}: {message}")
         handle_message(conn, message)
         print(message)
 
@@ -34,7 +35,7 @@ def handle_message(conn, message):
         elif message['action'] == 'fetch':
             handle_fetch(conn, message)
         elif message['action'] == 'exit':
-            handle_exit(message)
+            handle_exit(conn, message)
         else:
             response = {"status": "error", "message": "Unknown action"}
             conn.send(json.dumps(response).encode())
@@ -112,12 +113,35 @@ def handle_get_peers(conn, message):
         response = {}
     conn.send(json.dumps(response).encode())
 
-def handle_exit(message):
-    peer_id = message['peer_id']
+# def handle_exit(conn, message):
+#     ip = message['peers_ip']
+#     port = message['peers_port']
+#     for file_hash in peer_dict:
+#         for peer_id, details in peer_dict[file_hash]['peers'].items():
+#             if details['ip'] == ip and details['port'] == port:
+#                 del peer_dict[file_hash]['peers'][peer_id]
+#                 print(f"Peer {ip}:{port} has exited. Updated peer_dict for file {file_hash}: {peer_dict[file_hash]}")
+
+
+
+def handle_exit(conn, message):
+    ip = message['peers_ip']
+    port = message['peers_port']
+    if ip is None or port is None:
+        print("Invalid exit message: missing IP or port.")
+        return
+    peer_removed = False
     for file_hash in peer_dict:
-        if peer_id in peer_dict[file_hash]['peers']:
+        peers_to_remove = []
+        for peer_id, details in peer_dict[file_hash]['peers'].items():
+            if details['ip'] == ip and details['port'] == port:
+                peers_to_remove.append(peer_id)
+        for peer_id in peers_to_remove:
             del peer_dict[file_hash]['peers'][peer_id]
-            print(f"Peer {peer_id} has exited. Updated peer_dict for file {file_hash}: {peer_dict[file_hash]}")
+            peer_removed = True
+            print(f"Peer {ip}:{port} has exited. Updated peer_dict for file {file_hash}: {peer_dict[file_hash]}")
+    if not peer_removed:
+        print(f"No matching peer found for {ip}:{port} in peer_dict.")
 
 
 def get_host_default_interface_ip():
@@ -143,13 +167,13 @@ def start_server(host, port):
         # Create a new thread for each client connection
         client_thread = threading.Thread(target=new_connection, args=(client_socket, client_address))
         client_thread.start()
-        print(f"Active connections: {threading.active_count() - 1}")
+        # print(f"Active connections: {threading.active_count() - 1}")
 
 
 #---SERVER COMMAND---
-def server_command_shell():
+def server_CLI():
     while True:
-        cmd_input = input("Server command: ")
+        cmd_input = input("Server command: (discover <peer_hostname>, ping <peer_hostname>, peer_dict, exit)\n")
         cmd_parts = cmd_input.split()
         if cmd_parts:
             action = cmd_parts[0]
@@ -212,11 +236,14 @@ if __name__ == "__main__":
     print("Listening on: {}:{}".format(hostip,port))
     server_thread = threading.Thread(target=start_server, args=(hostip, port)) 
     server_thread.start()
-    server_command_shell()
-    # start_server(hostip, port)
-    print("Shutting down server...")
-    
-    sys.exit(0)
+    try:
+        server_CLI()
+    except KeyboardInterrupt:
+        print("Shutting down server...")
+        terminate_event.set()  # Signal all threads to terminate
+        server_thread.join()   # Wait for the server thread to finish
+    finally:
+        print("All threads have been terminated. Exiting...")
 
 
 

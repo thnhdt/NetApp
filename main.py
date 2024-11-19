@@ -14,7 +14,7 @@ if __name__ == "__main__":
         server_thread.start()
         time.sleep(1)
 
-        print("Please type your command (publish file_name | fetch file_name | download file_name | create file_name num_chunks | exit)\n")
+        print("Please type your command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers | exit)\n")
         while not get_terminate_flag():
             cmd = input("Command: ")
             process_input(cmd, client_socket)
