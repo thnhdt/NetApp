@@ -1,0 +1,75 @@
+{
+    "text1.txt": {
+        "piece_status": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0
+        ],
+        "total_pieces": 10
+    },
+    "5.txt": {
+        "piece_status": [
+            1,
+            1,
+            0,
+            0,
+            1,
+            1
+        ],
+        "total_pieces": 6
+    },
+    "1.txt": {
+        "piece_status": [
+            1,
+            0,
+            1,
+            1,
+            0
+        ],
+        "total_pieces": 5
+    },
+    "2.doc": {
+        "piece_status": [
+            0,
+            0,
+            1,
+            1
+        ],
+        "total_pieces": 4
+    },
+    "test.txt": {
+        "piece_status": [
+            1,
+            0,
+            0,
+            1
+        ],
+        "total_pieces": 4
+    },
+    "test.doc": {
+        "piece_status": [
+            1,
+            1,
+            1,
+            0
+        ],
+        "total_pieces": 4
+    },
+    "hi.doc": {
+        "piece_status": [
+            0,
+            0,
+            0,
+            1,
+            1
+        ],
+        "total_pieces": 5
+    }
+}
