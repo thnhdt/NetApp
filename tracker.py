@@ -11,19 +11,24 @@ import sys
 
 peer_dict = {}
 lock = threading.Lock()
-terminate_event = threading.Event()
+terminate_flag = False
+
+def get_terminate_flag():
+    return terminate_flag
+
+def set_terminate_flag(value: bool):
+    global terminate_flag
+    terminate_flag = value
 
 def new_connection(conn, addr):
     print(f"New connection from {addr}")
-    while not terminate_event.is_set():
+    while not get_terminate_flag():
         data = conn.recv(1024).decode('utf-8');
         if not data:
-            time.sleep(1)  # Wait for 100ms before the next iteration
+            time.sleep(1)
             continue
         message = json.loads(data)
-        # print(f"Received message from {addr}: {message}")
         handle_message(conn, message)
-        print(message)
 
 def handle_message(conn, message):
     lock.acquire()
@@ -93,11 +98,9 @@ def handle_fetch(conn, message):
             "file_size": peer_dict[file_hash]['file_size'],
             "peers_info": res_peers_info
         }
-        print(response)
     else:
         response = {"status": "error", "message": "File not found"}
-        print(response)
-    conn.send(json.dumps(response).encode())
+        conn.send(json.dumps(response).encode())
 
 def find_by_file_name(file_name):
     for file_hash, details in peer_dict.items():
@@ -135,7 +138,7 @@ def handle_exit(conn, message):
 
 
 def get_host_default_interface_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP connection
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
        s.connect(('8.8.8.8', 1))
        ip = s.getsockname()[0]
@@ -152,12 +155,19 @@ def start_server(host, port):
     server_socket.listen(5)
     print(f"Server listening on {host}:{port}")
 
-    while True:
-        client_socket, client_address = server_socket.accept()
-        # Create a new thread for each client connection
-        client_thread = threading.Thread(target=new_connection, args=(client_socket, client_address))
-        client_thread.start()
-        # print(f"Active connections: {threading.active_count() - 1}")
+    while not get_terminate_flag():
+        try:
+            server_socket.settimeout(1.0)
+            client_socket, client_address = server_socket.accept()
+            client_thread = threading.Thread(target=new_connection, args=(client_socket, client_address))
+            client_thread.start()
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"Error accepting connection: {e}")
+            break
+    server_socket.close()
+    print("Server has been shut down.")
 
 
 #---SERVER COMMAND---
@@ -230,8 +240,8 @@ if __name__ == "__main__":
         server_CLI()
     except KeyboardInterrupt:
         print("Shutting down server...")
-        terminate_event.set()  # Signal all threads to terminate
-        server_thread.join()   # Wait for the server thread to finish
+        set_terminate_flag(True)
+        server_thread.join()
     finally:
         print("All threads have been terminated. Exiting...")
 

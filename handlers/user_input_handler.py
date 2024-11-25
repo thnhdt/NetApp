@@ -10,7 +10,7 @@ def process_input(cmd, client_socket):
     params = cmd.split()
 
     if len(params) == 0:
-        print("Please type your command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers | exit)\n")
+        print("Please type your command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers <file_name> | exit)\n")
         return
 
     try:
@@ -54,7 +54,7 @@ def process_input(cmd, client_socket):
             get_peers(client_socket, params[1])
 
         else:
-            print('Invalid command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers | exit)')
+            print('Invalid command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers <file_name> | exit)')
 
     except IndexError:
-        print('Invalid command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers | exit)')
+        print('Invalid command (publish <file_name> | fetch <file_name> | download <file_name> | create <file_name> <num_chunks> | get_peers <file_name> | exit)')

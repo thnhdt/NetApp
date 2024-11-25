@@ -8,6 +8,8 @@ from config import FILE_STATUS_PATH, STORAGE_PATH, PIECE_SIZE
 # Utility Functions
 def load_file_status():
     if os.path.exists(FILE_STATUS_PATH):
+        if os.path.getsize(FILE_STATUS_PATH) == 0:
+            return {}
         with open(FILE_STATUS_PATH, "r") as file:
             return json.load(file)
     return {}
@@ -37,14 +39,6 @@ def check_local_piece_files(file_name):
         return file_status[file_name]["piece_status"]
     return False
 
-# Table Display
-# def create_table(pieces, select=True):
-#     table = PrettyTable()
-#     table.field_names = ["Piece Number", "Piece Status"]
-#     for i, piece in enumerate(pieces):
-#         piece_status = piece.strip() if piece else "(empty) - Cannot select" if select else "(empty)"
-#         table.add_row([i + 1, piece_status])
-#     return table
 def create_table(pieces, select=True):
     table = PrettyTable()
     table.field_names = ["Piece Number", "Piece Content"]
