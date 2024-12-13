@@ -232,7 +232,7 @@ def ip_port_by_hostname(peer_dict, hostname):
 if __name__ == "__main__":
     #id = socket.getid()
     hostip = get_host_default_interface_ip()
-    port = 65431
+    port = 50001
     print("Listening on: {}:{}".format(hostip,port))
     server_thread = threading.Thread(target=start_server, args=(hostip, port)) 
     server_thread.start()
