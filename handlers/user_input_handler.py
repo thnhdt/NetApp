@@ -6,7 +6,7 @@ from handlers.connect_handler import disconnect_from_server
 from handlers.create_sample_file_handler import create_sample_file
 from handlers.get_peers import get_peers
 
-def process_input(cmd, client_socket):
+def process_input(cmd, client_socket, peer_port):
     params = cmd.split()
 
     if len(params) == 0:
@@ -17,7 +17,7 @@ def process_input(cmd, client_socket):
         if params[0] == 'exit':
             set_terminate_flag(True)
             if client_socket:
-                disconnect_from_server(client_socket)
+                disconnect_from_server(client_socket, peer_port=peer_port)
             print("Stopping the server...")
 
         elif params[0] == 'create':
@@ -33,19 +33,19 @@ def process_input(cmd, client_socket):
             if len(params) == 1:
                 print('Argument file_name is required')
                 return
-            publish(client_socket, params[1])
+            publish(client_socket, params[1], peer_port)
 
         elif params[0] == 'fetch':
             if len(params) == 1:
                 print('Argument file_name is required')
                 return
-            fetch(client_socket, params[1])
+            fetch(client_socket, params[1], peer_port)
 
         elif params[0] == 'download':
             if len(params) == 1:
                 print('Argument file_name is required')
                 return
-            download(client_socket, params[1])
+            download(client_socket, params[1], peer_port)
 
         elif params[0] == 'get_peers':
             if len(params) == 1:

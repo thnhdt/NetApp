@@ -5,12 +5,12 @@ import socket
 import threading
 from queue import Queue
 from handlers.utils import check_local_files, load_file_status, update_file_status
-from config import PEER_IP, PEER_PORT, PIECE_SIZE
+from config import PEER_IP, PIECE_SIZE
 from concurrent.futures import ThreadPoolExecutor
 from handlers.create_sample_file_handler import store_file_chunk
 from handlers.connect_handler import connect_to_peer, disconnect_from_peer
 
-def download(client_socket, file_name):
+def download(client_socket, file_name, peer_port):
     if not check_local_files(file_name):
         print(f"The file '{file_name}' does not exist locally. Please fetch it first using the fetch function.")
         return
@@ -18,7 +18,7 @@ def download(client_socket, file_name):
     command = {
         "action": "fetch",
         "peers_ip": PEER_IP,
-        "peers_port": PEER_PORT,
+        "peers_port": peer_port,
         "peers_hostname": socket.gethostname(),
         "file_name": file_name,
     }

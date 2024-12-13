@@ -2,12 +2,12 @@ import json
 import math
 import socket
 from prettytable import PrettyTable
-from config import PEER_IP, PEER_PORT, PIECE_SIZE
+from config import PEER_IP, PIECE_SIZE
 from handlers.create_sample_file_handler import create_sample_file
 from handlers.utils import check_local_files, create_table, load_file_chunks
 
 
-def fetch(client_socket, file_name):
+def fetch(client_socket, file_name, peer_port):
     peers_hostname = socket.gethostname()
 
     if check_local_files(file_name):
@@ -21,7 +21,7 @@ def fetch(client_socket, file_name):
     command = {
         "action": "fetch",
         "peers_ip":PEER_IP,
-        "peers_port":PEER_PORT,
+        "peers_port":peer_port,
         "peers_hostname":peers_hostname,
         "file_name": file_name,
     }

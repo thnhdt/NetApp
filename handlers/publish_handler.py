@@ -2,10 +2,10 @@ import os
 import shlex
 import socket
 import json
-from config import PEER_IP, PEER_PORT, PIECE_SIZE, STORAGE_PATH
+from config import PEER_IP, PIECE_SIZE, STORAGE_PATH
 from handlers.utils import create_table, generate_info_hash, load_file_chunks
 
-def handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash):
+def handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash, peer_port):
     print(f"File {file_name} has {len(pieces)} pieces:")
     print(create_table(pieces))
 
@@ -25,16 +25,16 @@ def handle_publish_piece(client_socket, file_name, pieces, file_size, file_hash)
             print(f"Invalid piece number: {i}")
 
     if file_hash:
-        publish_piece_file(client_socket, file_name, file_size, file_hash, selected_chunks)
+        publish_piece_file(client_socket, file_name, file_size, file_hash, selected_chunks, peer_port)
     else:
         print("No valid pieces selected.")
 
-def publish_piece_file(client_socket, file_name, file_size, file_hash, selected_chunks):
+def publish_piece_file(client_socket, file_name, file_size, file_hash, selected_chunks, peer_port):
     peers_hostname = socket.gethostname()
     command = {
         "action": "publish",
         "peers_ip":PEER_IP,
-        "peers_port":PEER_PORT,
+        "peers_port":peer_port,
         "peers_hostname":peers_hostname,
         "file_name": file_name,
         "file_size": file_size,
